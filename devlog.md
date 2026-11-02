@@ -2,6 +2,31 @@
 
 Notes on what I actually worked on, in the order I did it. New entries go on top.
 
+## 2026-11-02
+
+Added `scripts/toposort.py` - orders things so each one comes after what it
+depends on, either as a flat list or as levels that could run in parallel.
+Build steps, migrations and start-up order all have this shape. What I
+wanted was a useful error: "there's a cycle somewhere" is no help in a graph
+of 200 items, `a -> b -> c -> a` is.
+
+Decisions I want to remember:
+
+- Finding the cycle is easy once you see why: when the sort gets stuck,
+  every leftover item still depends on another leftover item. Follow any one
+  dependency and you must eventually repeat an item, and that loop is a
+  real cycle. Items that only lead into it, or hang off it, aren't reported.
+- No recursion. It works level by level, so a chain of 5000 items is fine.
+  There's a test for exactly that.
+- Ties keep first-mention order so the output is stable, which matters when
+  you diff build logs.
+- A self-dependency (`x: x`) is a cycle, not something to skip.
+- The CLI builds the whole answer before printing, so a cycle never leaves
+  half an order on stdout for the next script to act on.
+
+Added `tests/test_toposort.py` (`unittest`, 45 tests) and
+`docs/toposort.md`.
+
 ## 2026-10-30
 
 Added `scripts/waitfor.sh` - waits until a TCP port, an HTTP URL, a file or
