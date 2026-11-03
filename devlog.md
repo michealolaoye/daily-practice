@@ -2,6 +2,39 @@
 
 Notes on what I actually worked on, in the order I did it. New entries go on top.
 
+## 2026-11-03
+
+Added `scripts/jsonl.py` - filter, pick fields from and count JSON Lines.
+`grep 500` on a structured log matches a timestamp as happily as a status,
+and what I actually want is "records where `status` is at least 500" or
+"how many per path". `jq` does it but isn't installed on every machine I
+use, and I only need three of its jobs.
+
+Decisions I want to remember:
+
+- A missing field is not `null`. `get_path` returns a marker, so
+  `status=null` matches only a real null, and a missing field makes `!=`
+  true and every ordering operator false.
+- JSON equality, not Python equality. In Python `True == 1`; in JSON they
+  are different, so `a=1` must not match `true`. Same for `200` against
+  `"200"`.
+- Ordering only compares two numbers or two strings. `"10" > 5` is false
+  instead of an exception, so one odd record doesn't kill a long run.
+- It streams, which means a bad line half way through is reported after the
+  earlier records have been printed. `--skip-bad` is the escape hatch.
+
+The tests caught a real bug: output containing `café` came back undecodable
+because a Windows pipe uses the locale code page (cp1252), not UTF-8, and a
+character outside that code page would have crashed the printer outright.
+JSON Lines is UTF-8, so both streams are now forced to it, and there's a
+test with Japanese text and an emoji so it can't quietly regress.
+
+Also: a closed pipe (`| head`) is `EPIPE` on Unix but `EINVAL` on Windows,
+and my first closed-pipe test deadlocked because it wrote all its input
+before reading any output. Feeding the input from a file fixed it.
+
+Added `tests/test_jsonl.py` (`unittest`, 69 tests) and `docs/jsonl.md`.
+
 ## 2026-11-02
 
 Added `scripts/toposort.py` - orders things so each one comes after what it

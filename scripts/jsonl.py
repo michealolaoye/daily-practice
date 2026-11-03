@@ -145,6 +145,11 @@ def main(argv=None):
     parser.add_argument("--skip-bad", action="store_true", help="skip lines that are not valid JSON (and say how many)")
     args = parser.parse_args(argv)
 
+    # JSON Lines is UTF-8. Without this, a pipe on Windows uses the locale
+    # code page, which mangles accented text and cannot encode most others.
+    for stream in (sys.stdin, sys.stdout):
+        stream.reconfigure(encoding="utf-8")
+
     if args.limit is not None and args.limit < 0:
         parser.error("-n must not be negative")
     try:
