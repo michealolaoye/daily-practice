@@ -2,6 +2,39 @@
 
 Notes on what I actually worked on, in the order I did it. New entries go on top.
 
+## 2026-11-04
+
+Added `scripts/mdtable.py` - tidies Markdown tables so the columns line up.
+Add one longer cell and every other row in the source is out of line; the
+rendered page looks fine but diffs are harder to read. It has a `--check`
+mode for a pre-commit hook or CI, and `-i` to rewrite files.
+
+Decisions I want to remember:
+
+- What counts as a table is deliberately strict: a header, a delimiter row
+  with the same number of cells, and at most three spaces of indent. Prose
+  with a stray `|` is left alone, and a four-space indent (a code block) is
+  not mistaken for a table. Fenced code and quoted tables are skipped.
+- Widths are display widths, not `len()`. Japanese text counts 2 columns and
+  combining accents count 0, otherwise `日本語` never lines up.
+- `\|` is content, not a separator, and counts toward the cell's width.
+- A row with more cells than the header is an error, not something to drop.
+  Some renderers throw the extra cells away; I'd rather be told.
+- A line with no pipe ends the table. Renderers disagree about that case,
+  and ending the table is the cautious reading.
+- In-place writes go through a temporary file and `os.replace`, so an
+  interrupted run can't leave a half-written README, and a file that's
+  already tidy isn't touched at all.
+- Line endings are preserved (CRLF stays CRLF, no final newline stays none),
+  which means reading and writing without newline translation.
+
+All 67 tests passed on the first run, which made me suspicious, so I
+broke the script on purpose twice (removed the fence check, then the
+indent check) to confirm the matching tests fail. They did.
+
+Added `tests/test_mdtable.py` (`unittest`, 67 tests, one POSIX-only skipped
+on Windows) and `docs/mdtable.md`.
+
 ## 2026-11-03
 
 Added `scripts/jsonl.py` - filter, pick fields from and count JSON Lines.
