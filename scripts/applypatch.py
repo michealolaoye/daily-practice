@@ -100,6 +100,17 @@ def parse_patch(text):
                     raise MalformedPatch(f"line {lineno}: hunk is shorter than its header says")
                 line = lines[i]
                 op, text_ = (line[:1] or " "), line[1:]  # a bare empty line is an empty context line
+                if op == "\\":
+                    # "\ No newline at end of file" belongs to the line above
+                    # it, which can be mid-hunk (the last "-" before the "+"s).
+                    if not body:
+                        raise MalformedPatch(f"line {i + 1}: stray 'No newline' marker")
+                    if body[-1][0] in (" ", "-"):
+                        old_noeol = True
+                    if body[-1][0] in (" ", "+"):
+                        new_noeol = True
+                    i += 1
+                    continue
                 if op == " ":
                     old_seen += 1
                     new_seen += 1
@@ -113,14 +124,13 @@ def parse_patch(text):
                 i += 1
             if old_seen != old_count or new_seen != new_count:
                 raise MalformedPatch(f"line {lineno}: hunk has more lines than its header says")
-            # The marker follows the last line of whichever side it belongs to.
+            # A marker after the final line comes once the counts are met.
             while i < len(lines) and lines[i].startswith("\\"):
                 if not body:
                     raise MalformedPatch(f"line {i + 1}: stray 'No newline' marker")
-                last_op = body[-1][0]
-                if last_op in (" ", "-"):
+                if body[-1][0] in (" ", "-"):
                     old_noeol = True
-                if last_op in (" ", "+"):
+                if body[-1][0] in (" ", "+"):
                     new_noeol = True
                 i += 1
             hunks.append(Hunk(old_start, new_start, body, old_noeol, new_noeol))
@@ -160,7 +170,8 @@ def apply_hunks(text, hunks, name="file"):
         old, new = hunk.old(), hunk.new()
         # old_start is 1-based, but for a hunk with no old lines it names the
         # line *before* the insertion point.
-        expected = (hunk.old_start if not old else hunk.old_start - 1) + delta + drift
+        named = (hunk.old_start if not old else hunk.old_start - 1) + delta
+        expected = named + drift
         reaches_end = lambda pos: pos + len(old) == len(lines)
 
         def fits(pos):
@@ -181,10 +192,10 @@ def apply_hunks(text, hunks, name="file"):
                 break
         if found is None:
             raise HunkFailed(f"{name}: hunk #{number} (at line {hunk.old_start}) does not apply")
-        offset = found - expected
+        offset = found - named  # reported against the diff, not the last hunk
         if offset:
             notes.append(f"hunk #{number} applied at line {found + 1} (offset {offset:+d} lines)")
-        drift += offset
+        drift = offset
         if old and reaches_end(found):
             final_newline = not hunk.new_noeol
         elif not old and found == len(lines) and hunk.new_noeol:
@@ -197,12 +208,14 @@ def apply_hunks(text, hunks, name="file"):
 
 def _target_path(path, strip):
     parts = [p for p in path.replace("\\", "/").split("/") if p not in ("", ".")]
+    # Checked before stripping: with -p1, "../x" must not lose its ".." to the strip.
+    if ".." in parts or (parts and re.match(r"^[A-Za-z]:", parts[0])):
+        raise MalformedPatch(f"refusing path outside the tree: {path!r}")
     if len(parts) <= strip:
         raise MalformedPatch(f"cannot strip {strip} leading components from {path!r}")
-    parts = parts[strip:]
-    if path.startswith(("/", "\\")) and strip == 0 or ".." in parts or re.match(r"^[A-Za-z]:", parts[0]):
+    if strip == 0 and path.startswith(("/", "\\")):
         raise MalformedPatch(f"refusing path outside the tree: {path!r}")
-    return os.path.join(*parts)
+    return "/".join(parts[strip:])
 
 
 def _read(path):

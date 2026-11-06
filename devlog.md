@@ -2,6 +2,45 @@
 
 Notes on what I actually worked on, in the order I did it. New entries go on top.
 
+## 2026-11-06
+
+Added `scripts/applypatch.py` - applies a unified diff to a tree of files,
+all or nothing. `patch` and `git apply` aren't always there, and I wanted
+two guarantees together: nothing changes unless every hunk fits, and a diff
+from elsewhere can't write outside the directory it's applied to.
+
+What the tests caught (the first run had 8 problems, three of them in the
+script):
+
+- A `\ No newline at end of file` marker in the *middle* of a hunk (after
+  the last `-` line, before the `+` lines) was rejected as garbage. I'd only
+  handled it at the end of a hunk. Parsing now treats it as belonging to the
+  line above wherever it appears.
+- Path traversal got through with `-p1`: `+++ ../x` lost its `..` to the
+  strip before I checked for it. The check now runs on the whole path first.
+- The progress lines printed `new\dir\f.txt` on Windows. Paths are now
+  joined with `/` internally.
+- The offset reported for a later hunk was relative to the previous hunk, not
+  to the diff. It's now measured against the diff, like GNU patch.
+
+(The other four were mistakes in my own tests.)
+
+Decisions I want to remember:
+
+- Context must match exactly but position needn't: each hunk is tried at the
+  stated line, then growing offsets either side, nearest wins, and no fuzz. A
+  hunk whose context changed fails instead of landing somewhere doubtful.
+- Final newlines are part of matching. A hunk that mentions a missing final
+  newline only matches at the end of a file that really lacks one.
+- Everything is worked out in memory before anything is written, so a failed
+  hunk never leaves a half-patched tree. A full disk during the write phase
+  is the one case I can't promise about.
+- `-R` swaps the two sides of every hunk and the two paths, so reversing a
+  creation deletes the file.
+- A seeded random test pushes `difflib` diffs of random edits through both
+  directions. I also broke the script three ways (no `..` check, ignoring
+  the final-newline rule, no ordering floor) and each failed 2 to 4 tests.
+
 ## 2026-11-04
 
 Added `scripts/mdtable.py` - tidies Markdown tables so the columns line up.
