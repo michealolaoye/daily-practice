@@ -9,8 +9,7 @@ all or nothing. `patch` and `git apply` aren't always there, and I wanted
 two guarantees together: nothing changes unless every hunk fits, and a diff
 from elsewhere can't write outside the directory it's applied to.
 
-What the tests caught (the first run had 8 problems, three of them in the
-script):
+What the tests caught on the first run (four things in the script):
 
 - A `\ No newline at end of file` marker in the *middle* of a hunk (after
   the last `-` line, before the `+` lines) was rejected as garbage. I'd only
@@ -23,7 +22,7 @@ script):
 - The offset reported for a later hunk was relative to the previous hunk, not
   to the diff. It's now measured against the diff, like GNU patch.
 
-(The other four were mistakes in my own tests.)
+One more failure was a mistake in my own test (a wrong strip count).
 
 Decisions I want to remember:
 
