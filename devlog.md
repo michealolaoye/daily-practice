@@ -2,6 +2,32 @@
 
 Notes on what I actually worked on, in the order I did it. New entries go on top.
 
+## 2026-11-09
+
+Added `scripts/ignorematch.py` - works out what a project's `.gitignore`
+files ignore, without git. Backup scripts, packagers and watchers all need
+to skip ignored files, and a quick `fnmatch` gets the rules wrong.
+
+Decisions I want to remember:
+
+- The rule people forget: nothing inside an ignored directory can be
+  re-included. With `build/` ignored, `!build/keep.txt` does nothing, but
+  `build/*` plus `!build/keep.txt` works. `why()` checks every parent
+  directory before the path itself.
+- A slash at the start or in the middle anchors a pattern to its
+  `.gitignore`'s directory. A trailing slash alone doesn't anchor; it means
+  "directories only".
+- `**` is only special as a whole segment: zero or more directories in `**/x`
+  and `a/**/b`, one or more in `a/**`. In `a**b` it's just `*`.
+- Deeper `.gitignore` files are added after shallower ones, so they win;
+  `.git/info/exclude` goes first, so it loses to everything.
+- The real check is a test that builds a git repository and compares my
+  answers with `git check-ignore` for 8 pattern sets over 30 paths. They
+  agreed on the first run, and so did the other 56 tests, so I broke the
+  script four ways (no parent check, `*` crossing `/`, no anchoring,
+  ignoring the directory-only flag). Each failed 3 to 7 tests, and the git
+  cross-check caught all four on its own.
+
 ## 2026-11-06
 
 Added `scripts/applypatch.py` - applies a unified diff to a tree of files,
