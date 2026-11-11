@@ -2,6 +2,38 @@
 
 Notes on what I actually worked on, in the order I did it. New entries go on top.
 
+## 2026-11-11
+
+Added `scripts/uritemplate.py` - expands RFC 6570 URI templates
+(`/repos/{owner}/{repo}/issues{/number}{?state}`). Deploy scripts and API
+clients build URLs all day, and f-strings are how `?q=a b` or
+`/issues/None` ends up in a request.
+
+Decisions I want to remember:
+
+- One table drives all eight operators, as in the RFC's Appendix A.
+  `{?x}` gives `?x=` for an empty string and `{;x}` gives `;x`; the only
+  difference is one cell in that table.
+- `{+x}` and `{#x}` keep reserved characters and existing `%XX` triplets,
+  but a lone `%` is still `%25`.
+- Prefixes count characters, not bytes, and in `{+x:N}` a triplet counts as
+  one character so it's never cut in half. A prefix on a list is an error
+  rather than something to quietly ignore.
+- `None`, `[]` and `{}` are undefined and disappear with their prefix;
+  `""` is defined. Booleans are refused because every API spells them
+  differently.
+- Malformed templates raise with a position instead of returning half a URL.
+
+Testing: the main test runs every example in RFC 6570 sections 3.2.1 to
+3.2.9. My first copy of the tables was short by four rows (the
+`O{empty}X` ones). The row-count assert failed, though only because I'd
+guessed the count wrong too. Extracting the rows from the RFC text and
+diffing them against the test showed what was missing, and the copy now
+matches row for row. The script passed all of them. I broke it five ways (wrong
+`ifemp` for `;`, prefixes splitting triplets, empty lists counting as
+defined, unencoded dict keys, accepting future operators), and each made 1
+to 5 tests fail.
+
 ## 2026-11-09
 
 Added `scripts/ignorematch.py` - works out what a project's `.gitignore`
