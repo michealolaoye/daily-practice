@@ -2,6 +2,35 @@
 
 Notes on what I actually worked on, in the order I did it. New entries go on top.
 
+## 2026-11-12
+
+Added `scripts/changelog.py` - reads `git log` since the last tag and
+prints release notes plus the next version from Conventional Commits. Every
+release tag needs "what's the next version" and "what changed", and if
+the commits follow the convention both answers are already there.
+
+Decisions I want to remember:
+
+- Breaking is major, `feat` minor, `fix`/`perf` patch, and the highest one
+  wins. Before 1.0.0 a breaking change only bumps the minor version, which
+  semver allows.
+- `BREAKING CHANGE:` only counts in the last paragraph (the footer), in
+  upper case. Otherwise a body that just talks about a breaking change
+  would cut a major release.
+- Commits that aren't Conventional Commits are named on stderr, not
+  dropped silently; `--strict` makes them fail the run.
+- Merges are skipped, the tag's `v` prefix is kept, and a tag that isn't
+  `X.Y.Z` stops the run instead of guessing.
+- git gets an argument list, and a `--since` starting with `-` is refused.
+  `--since=--output=x` would otherwise reach git as an option.
+- Exit 1 for "nothing to release", so a pipeline can do
+  `if v=$(changelog.py --next); then git tag "$v"; fi`.
+
+All 34 tests passed first time (most of them build real throwaway git
+repos), so I broke the script five ways (footers anywhere in the body,
+merges not skipped, no pre-1.0 rule, newest first, option-like `--since`
+allowed). Each failed 1 or 2 tests.
+
 ## 2026-11-11
 
 Added `scripts/uritemplate.py` - expands RFC 6570 URI templates
