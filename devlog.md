@@ -2,6 +2,46 @@
 
 Notes on what I actually worked on, in the order I did it. New entries go on top.
 
+## 2026-11-13
+
+Added `scripts/safeextract.py` - unpacks a tar or zip into a new directory,
+all or nothing, and refuses archives that try to write anywhere else.
+Deploys unpack archives constantly, and `extractall` trusts them: `../`
+names, a symlink to `/etc` followed by a file "inside" it, device files,
+zip bombs.
+
+Decisions I want to remember:
+
+- Check every member first and report every problem, then write.
+- Nothing may sit under a file or a symlink from the same archive, in
+  either order. Refusing that is simpler and safer than resolving it.
+- Symlink targets are walked step by step, and stepping *through* another
+  link is refused: with `s -> .`, `x -> s/../y` looks like `y` but lands
+  outside. Hard links become copies.
+- Sizes are checked from the headers and again while copying, since zip
+  headers can lie.
+- Extract into a `.safeextract-*` sibling and rename at the end. DEST must
+  not exist, so a failure never leaves half a tree and nothing gets
+  overwritten.
+- `aux.txt`, `a:b` and case-only clashes are refused too, because an
+  archive that only extracts properly on one OS is a bug.
+
+The first smoke run, before committing the script, flagged every entry of
+a zip made by Python's `writestr` as a "special file". Those entries store
+permission bits with no file type. Only an explicit non-regular type
+counts now.
+
+On the first test run 5 tests failed, all my own mistakes: `café` is 5
+bytes, `a:b` really is a drive-relative path on Windows, `...` ends in a
+dot and is meant to be refused, my mock skipped the check that fills in
+paths, and `tarfile`'s `data` filter turns `/abs` into `abs` instead of
+refusing it. That last one is now a test of its own. 28 tests pass; the
+one that creates a real symlink skips here, since this Windows account
+can't make symlinks. I broke the script six ways (no `..` check, no
+"inside a non-directory" check, links through links, no byte counting, no
+clean-up, case clashes allowed); each failed 1 to 3 tests. Without the `..`
+check, `..` is still refused, because it ends in a dot.
+
 ## 2026-11-12
 
 Added `scripts/changelog.py` - reads `git log` since the last tag and
