@@ -2,6 +2,137 @@
 
 Notes on what I actually worked on, in the order I did it. New entries go on top.
 
+## 2026-11-17
+
+Added `scripts/bencode.py` - the encoding inside `.torrent` files, with a
+decoder that only accepts what an encoder would write, and a command that
+prints a torrent's info-hash. It's a tiny format that looks forgiving, and a
+torrent's identity is a hash of its `info` bytes, so any second spelling of
+a value is a different torrent.
+
+Decisions I want to remember:
+
+- Refuse `i03e`, `i-0e`, `01:a`, unsorted keys, duplicate keys and trailing
+  bytes; errors name the byte offset.
+- Keys sort as raw bytes (`B` before `a`), not as text.
+- The info-hash is the SHA-1 of the original slice of the `info` value,
+  not of a re-encoding, and the whole file still has to be valid.
+- Depth is capped at 100 so `l` x 5000 is an error, not a `RecursionError`.
+- `bytes.isdigit()` is ASCII-only, which is what I wanted; the `str`
+  version would have accepted Arabic-Indic digits.
+- Binary strings print as `{"hex": ...}`, never guessed as text.
+
+Two of my own test fixtures failed on the first run, and that was the
+decoder doing its job: I'd put `announce` after `info` and `comment` after
+`info`, both out of order. I fixed the fixtures, not the decoder. I broke
+the script eleven ways; nine were caught straight away, one was an
+unreachable check (removed), and one (the "string claims more bytes than
+there are" check) was only caught by accident through the trailing-bytes
+check, so it got its own test. 29 tests pass. One existing
+`test_applypatch` failure (unicode output through a pipe on this Windows
+shell) fails the same without my changes; I haven't touched it today.
+
+## 2026-11-13
+
+Added `scripts/safeextract.py` - unpacks a tar or zip into a new directory,
+all or nothing, and refuses archives that try to write anywhere else.
+Deploys unpack archives constantly, and `extractall` trusts them: `../`
+names, a symlink to `/etc` followed by a file "inside" it, device files,
+zip bombs.
+
+Decisions I want to remember:
+
+- Check every member first and report every problem, then write.
+- Nothing may sit under a file or a symlink from the same archive, in
+  either order. Refusing that is simpler and safer than resolving it.
+- Symlink targets are walked step by step, and stepping *through* another
+  link is refused: with `s -> .`, `x -> s/../y` looks like `y` but lands
+  outside. Hard links become copies.
+- Sizes are checked from the headers and again while copying, since zip
+  headers can lie.
+- Extract into a `.safeextract-*` sibling and rename at the end. DEST must
+  not exist, so a failure never leaves half a tree and nothing gets
+  overwritten.
+- `aux.txt`, `a:b` and case-only clashes are refused too, because an
+  archive that only extracts properly on one OS is a bug.
+
+The first smoke run, before committing the script, flagged every entry of
+a zip made by Python's `writestr` as a "special file". Those entries store
+permission bits with no file type. Only an explicit non-regular type
+counts now.
+
+On the first test run 5 tests failed, all my own mistakes: `café` is 5
+bytes, `a:b` really is a drive-relative path on Windows, `...` ends in a
+dot and is meant to be refused, my mock skipped the check that fills in
+paths, and `tarfile`'s `data` filter turns `/abs` into `abs` instead of
+refusing it. That last one is now a test of its own. 28 tests pass; the
+one that creates a real symlink skips here, since this Windows account
+can't make symlinks. I broke the script six ways (no `..` check, no
+"inside a non-directory" check, links through links, no byte counting, no
+clean-up, case clashes allowed); each failed 1 to 3 tests. Without the `..`
+check, `..` is still refused, because it ends in a dot.
+
+## 2026-11-12
+
+Added `scripts/changelog.py` - reads `git log` since the last tag and
+prints release notes plus the next version from Conventional Commits. Every
+release tag needs "what's the next version" and "what changed", and if
+the commits follow the convention both answers are already there.
+
+Decisions I want to remember:
+
+- Breaking is major, `feat` minor, `fix`/`perf` patch, and the highest one
+  wins. Before 1.0.0 a breaking change only bumps the minor version, which
+  semver allows.
+- `BREAKING CHANGE:` only counts in the last paragraph (the footer), in
+  upper case. Otherwise a body that just talks about a breaking change
+  would cut a major release.
+- Commits that aren't Conventional Commits are named on stderr, not
+  dropped silently; `--strict` makes them fail the run.
+- Merges are skipped, the tag's `v` prefix is kept, and a tag that isn't
+  `X.Y.Z` stops the run instead of guessing.
+- git gets an argument list, and a `--since` starting with `-` is refused.
+  `--since=--output=x` would otherwise reach git as an option.
+- Exit 1 for "nothing to release", so a pipeline can do
+  `if v=$(changelog.py --next); then git tag "$v"; fi`.
+
+All 34 tests passed first time (most of them build real throwaway git
+repos), so I broke the script five ways (footers anywhere in the body,
+merges not skipped, no pre-1.0 rule, newest first, option-like `--since`
+allowed). Each failed 1 or 2 tests.
+
+## 2026-11-11
+
+Added `scripts/uritemplate.py` - expands RFC 6570 URI templates
+(`/repos/{owner}/{repo}/issues{/number}{?state}`). Deploy scripts and API
+clients build URLs all day, and f-strings are how `?q=a b` or
+`/issues/None` ends up in a request.
+
+Decisions I want to remember:
+
+- One table drives all eight operators, as in the RFC's Appendix A.
+  `{?x}` gives `?x=` for an empty string and `{;x}` gives `;x`; the only
+  difference is one cell in that table.
+- `{+x}` and `{#x}` keep reserved characters and existing `%XX` triplets,
+  but a lone `%` is still `%25`.
+- Prefixes count characters, not bytes, and in `{+x:N}` a triplet counts as
+  one character so it's never cut in half. A prefix on a list is an error
+  rather than something to quietly ignore.
+- `None`, `[]` and `{}` are undefined and disappear with their prefix;
+  `""` is defined. Booleans are refused because every API spells them
+  differently.
+- Malformed templates raise with a position instead of returning half a URL.
+
+Testing: the main test runs every example in RFC 6570 sections 3.2.1 to
+3.2.9. My first copy of the tables was short by four rows (the
+`O{empty}X` ones). The row-count assert failed, though only because I'd
+guessed the count wrong too. Extracting the rows from the RFC text and
+diffing them against the test showed what was missing, and the copy now
+matches row for row. The script passed all of them. I broke it five ways (wrong
+`ifemp` for `;`, prefixes splitting triplets, empty lists counting as
+defined, unencoded dict keys, accepting future operators), and each made 1
+to 5 tests fail.
+
 ## 2026-11-09
 
 Added `scripts/ignorematch.py` - works out what a project's `.gitignore`
