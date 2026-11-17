@@ -2,6 +2,36 @@
 
 Notes on what I actually worked on, in the order I did it. New entries go on top.
 
+## 2026-11-17
+
+Added `scripts/bencode.py` - the encoding inside `.torrent` files, with a
+decoder that only accepts what an encoder would write, and a command that
+prints a torrent's info-hash. It's a tiny format that looks forgiving, and a
+torrent's identity is a hash of its `info` bytes, so any second spelling of
+a value is a different torrent.
+
+Decisions I want to remember:
+
+- Refuse `i03e`, `i-0e`, `01:a`, unsorted keys, duplicate keys and trailing
+  bytes; errors name the byte offset.
+- Keys sort as raw bytes (`B` before `a`), not as text.
+- The info-hash is the SHA-1 of the original slice of the `info` value,
+  not of a re-encoding, and the whole file still has to be valid.
+- Depth is capped at 100 so `l` x 5000 is an error, not a `RecursionError`.
+- `bytes.isdigit()` is ASCII-only, which is what I wanted; the `str`
+  version would have accepted Arabic-Indic digits.
+- Binary strings print as `{"hex": ...}`, never guessed as text.
+
+Two of my own test fixtures failed on the first run, and that was the
+decoder doing its job: I'd put `announce` after `info` and `comment` after
+`info`, both out of order. I fixed the fixtures, not the decoder. I broke
+the script eleven ways; nine were caught straight away, one was an
+unreachable check (removed), and one (the "string claims more bytes than
+there are" check) was only caught by accident through the trailing-bytes
+check, so it got its own test. 29 tests pass. One existing
+`test_applypatch` failure (unicode output through a pipe on this Windows
+shell) fails the same without my changes; I haven't touched it today.
+
 ## 2026-11-13
 
 Added `scripts/safeextract.py` - unpacks a tar or zip into a new directory,

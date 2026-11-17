@@ -86,7 +86,7 @@ def _read_digits(data, pos, stop, what):
         raise BencodeError(f"unterminated {what} at offset {pos}")
     text = data[pos:end]
     body = text[1:] if text.startswith(b"-") else text
-    if not body.isdigit() or not body.isascii():
+    if not body.isdigit():  # bytes.isdigit() is ASCII-only, so no Arabic-Indic digits
         raise BencodeError(f"bad {what} {text!r} at offset {pos}")
     if len(body) > 1 and body.startswith(b"0"):
         raise BencodeError(f"leading zero in {what} {text!r} at offset {pos}")
