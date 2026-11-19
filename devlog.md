@@ -2,6 +2,36 @@
 
 Notes on what I actually worked on, in the order I did it. New entries go on top.
 
+## 2026-11-18
+
+Added `scripts/base58.py` - Base58 and Base58Check, the encoding Bitcoin
+addresses are written in. It's an old idea (a big number in a friendlier
+alphabet) and I wanted the details: what happens to leading zeros and why a
+checksum is needed.
+
+Things I want to remember:
+
+- The bytes are one big integer, so leading zero bytes vanish unless they
+  are written separately: each becomes a `1`, the alphabet's zero digit.
+  `\0\0a` is `112g`.
+- Base58Check is the payload plus 4 bytes of double SHA-256. It catches any
+  single mistyped character (the test tries every character at every
+  position of the genesis address); random corruption still gets through
+  about once in 4 billion.
+- The alphabet drops `0 O I l`. The Flickr alphabet has the same 58
+  characters with lower case first, so the same text decodes to different bytes.
+- Input is capped at 64 KiB. The conversion is quadratic and I'd rather
+  refuse than hang.
+- Checksum errors don't repeat the text, since it may be a private key.
+
+I hand-wrote my expectation that Flickr encodes `a` as `2G`; it's `2F`, because
+Flickr leaves out `l` too so upper case starts one place earlier. The code was
+right and my arithmetic was wrong. The Bitcoin Core vectors, the genesis address
+(`1A1zP1...`) and a WIF private key all passed first time. I broke the script
+nine ways (no leading ones, no leading zeros on decode, checksum not checked,
+3-byte checksum, single hash, short-input check, spaces accepted, no size cap);
+each failed 1 to 10 tests.
+
 ## 2026-11-17
 
 Added `scripts/bencode.py` - the encoding inside `.torrent` files, with a
