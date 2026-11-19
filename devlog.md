@@ -2,6 +2,49 @@
 
 Notes on what I actually worked on, in the order I did it. New entries go on top.
 
+## 2026-11-19
+
+Added `scripts/udiff.py` - a unified diff generator using Myers' O(ND)
+algorithm, the missing half of `applypatch.py`. `difflib` would do the job, but
+I wanted to see how a shortest edit script is found and to produce exactly what
+`patch` and `git apply` accept.
+
+Decisions I want to remember:
+
+- The search is a walk over diagonals, one more edit per round, keeping the
+  furthest point on each; the first path to the corner is a shortest one. Every
+  round is saved to walk back, so memory is O(D squared); past 4000 edits it
+  gives up and replaces the whole file, which is still a valid patch.
+- Strip the common prefix and suffix first. Real edits are small, so D is.
+- Two changes share a hunk when the gap between them is at most twice the
+  context. Empty ranges name the line *before* the gap (`-0,0` for an insert
+  at the top) and one-line ranges drop the `,1`.
+- Lines compare exactly, line ending included: `b` vs `b` + newline is a
+  delete and an insert, which is where the end-of-file marker comes from.
+- Decode with `surrogateescape` so a stray Latin-1 byte comes out unchanged.
+
+The proof is in the tests: the script rebuilds `b`, is minimal against an LCS
+table on 400 random pairs, 300 random patches (ragged ends, context 0 to 8)
+apply and reverse through `applypatch.py`, more through `git apply`, and six
+simple cases match `git diff --no-index` hunk for hunk.
+
+Things that bit me, all in my harness and tests and not the diff: on this
+machine `git apply` rewrites files with CRLF unless you pass `-c
+core.autocrlf=false`, which made 285 of 300 correct patches look wrong; git
+appends the nearest function line after the second `@@` (diff -u doesn't);
+and I had counted hunk headers wrongly in two tests. The full suite took 27
+seconds because of all the `git` subprocesses, so it is down to about 15.
+
+Mutations: I broke it eleven ways. Nine failed tests: the hunk merge
+boundary, the one-line range rule, the empty-range rule, the end-of-file
+marker, the binary check, decoding with `replace`, the edit cap, the start of
+a pure-insertion hunk (only the slow tests that run real patch tools caught
+that one, a good argument for having them) and the tie-break in the search
+(that only changes which shortest script is chosen, and one test compares
+hunks with git's). The other two are equivalent: dropping the prefix strip
+changes speed only, and so does taking the start of a hunk from its first
+op instead of its first non-insert.
+
 ## 2026-11-18
 
 Added `scripts/base58.py` - Base58 and Base58Check, the encoding Bitcoin
