@@ -2,6 +2,28 @@
 
 Notes on what I actually worked on, in the order I did it. New entries go on top.
 
+## 2026-11-20
+
+Added `scripts/cronexpr.py` - parse a five-field cron expression and print its
+next run times. I kept misreading cron lines, and writing the matcher made me
+settle every quirk against what Vixie cron really does.
+
+Decisions I want to remember:
+
+- Search by jumping the coarsest wrong field (month, then day, hour, minute)
+  instead of ticking minute by minute, so a leap-day schedule needs a few
+  hundred steps instead of millions.
+- If both day-of-month and day-of-week are restricted, a day matches when
+  *either* does. `0 0 13 * fri` is every Friday plus every 13th, not Friday
+  the 13th.
+- Python's Monday=0 and cron's Sunday=0 don't line up, and `7` is an alias for
+  Sunday. Fold 7 into 0 at parse time and cap `*/n` on weekdays at 6, or
+  `*/2` picks up Sunday twice.
+- `int()` accepts fullwidth digits, so check `isascii()` first; a test feeds it
+  `１` to keep that honest.
+- The random test compares 60 expressions against a slow minute-by-minute check
+  and is why the suite takes about ten seconds.
+
 ## 2026-11-19
 
 Added `scripts/udiff.py` - a unified diff generator using Myers' O(ND)
